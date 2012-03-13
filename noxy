@@ -1,0 +1,47 @@
+#!/usr/bin/env node
+
+process.title = 'noxy_proxy';
+var httpProxy = require('http-proxy');
+var http = require('http');
+var fs = require('fs');
+
+var puts = console.log;
+var server = httpProxy.createServer(function(req, res, proxy) {
+  var buffer = httpProxy.buffer(req);
+  fs.readFile(process.env.HOME + './noxy.conf', 'utf-8', function(err, data) {
+    if (err) {
+      res.setHeader('Content-Type', 'text/plain');
+      res.end('can\'t read ./noxy.conf: ' + err);
+    }
+    try {
+      var hosts_arr = data.split('\n').map(function(pair) {
+        var p = pair.split(':');
+        var hash = {};
+        hash[p[0]] = parseInt(p[1]);
+        return hash;
+      });
+      var hosts = {};
+      hosts_arr.forEach(function(host) {
+        for (attr in host) hosts[attr] = host[attr]
+      });
+    } catch (err) {
+      res.setHeader('Content-Type', 'text/plain')
+      res.end('can\'t parse ~/.devproxy: ' + err)
+    }
+    if (typeof hosts != 'undefined') {
+      var host = req.headers['host'].split(':')[0];
+      var port = hosts[host] || 3000
+      proxy.proxyRequest(req, res, {
+        host: host,
+        port: port,
+        buffer: buffer
+      });
+    }
+  });
+});
+
+var port = 8999;
+server.listen(port);
+puts('listening on ' + port);
+puts('set up forwarding like this:');
+puts(' $ sudo iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port ' + port);
